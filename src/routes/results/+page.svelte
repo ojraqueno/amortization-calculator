@@ -3,6 +3,8 @@
 	import { amortizationResults, type ResultsData } from '$lib/stores/amortization';
 	import { formatCurrency, formatDate, formatLoanAmount } from '$lib/utils/formatting';
 	import { downloadSessionFile } from '$lib/utils/file-handling';
+	import MonthsProgressBar from '$lib/components/MonthsProgressBar.svelte';
+	import PrincipalProgressBar from '$lib/components/PrincipalProgressBar.svelte';
 	import { onMount } from 'svelte';
 
 	let resultsData = $state<ResultsData | null>(null);
@@ -75,6 +77,63 @@
 		});
 	});
 
+	// Calculate progress values for progress bars as of today
+	// Helper function to calculate months between two dates
+	function monthsBetweenDates(startDate: Date, endDate: Date): number {
+		const startYear = startDate.getFullYear();
+		const startMonth = startDate.getMonth();
+		const endYear = endDate.getFullYear();
+		const endMonth = endDate.getMonth();
+		return (endYear - startYear) * 12 + (endMonth - startMonth);
+	}
+
+	// Find the current payment based on today's date
+	let currentPayment = $derived.by(() => {
+		if (!resultsData || schedule.length === 0) return null;
+		
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		
+		// Find the most recent payment that has occurred (payment date <= today)
+		for (let i = schedule.length - 1; i >= 0; i--) {
+			const paymentDate = new Date(schedule[i].date);
+			paymentDate.setHours(0, 0, 0, 0);
+			if (paymentDate <= today) {
+				return schedule[i];
+			}
+		}
+		
+		// If no payment has occurred yet, return the first payment
+		return schedule.length > 0 ? schedule[0] : null;
+	});
+
+	// Calculate months elapsed as of today
+	let monthsElapsed = $derived.by(() => {
+		if (!resultsData) return 0;
+		const startDate = new Date(resultsData.startDate);
+		const today = new Date();
+		const totalMonths = resultsData.paymentTerm * 12;
+		return Math.max(0, Math.min(monthsBetweenDates(startDate, today), totalMonths));
+	});
+
+	// Months Progress: Percentage of months completed as of today
+	let monthsProgress = $derived.by(() => {
+		if (!resultsData || schedule.length === 0) return 0;
+		const totalMonths = resultsData.paymentTerm * 12;
+		return totalMonths > 0 ? Math.min(100, (monthsElapsed / totalMonths) * 100) : 0;
+	});
+
+	// Principal Progress: Percentage of principal paid off as of today
+	let principalProgress = $derived.by(() => {
+		if (!resultsData || !currentPayment) return 0;
+		
+		const originalLoan = resultsData.loanAmount;
+		const remainingBalanceAsOfToday = currentPayment.remainingBalance;
+		const principalPaid = originalLoan - remainingBalanceAsOfToday;
+		
+		return originalLoan > 0 ? Math.min(100, Math.max(0, (principalPaid / originalLoan) * 100)) : 0;
+	});
+
 	function startNewSession() {
 		amortizationResults.set(null);
 		goto('/');
@@ -118,11 +177,11 @@
 		</div>
 
 		{#if resultsData}
-			<!-- Monthly Payment -->
+			<!-- Monthly Payment with Progress Bars -->
 			<div class="card preset-filled-neutral p-6 mb-8">
 				<h2 class="h3 mb-4">Monthly Payment</h2>
 				<p class="text-3xl font-semibold text-primary-500 mb-4">{formatCurrencyWithSymbol(resultsData.monthlyPayment)}</p>
-				<div class="flex flex-wrap gap-2">
+				<div class="flex flex-wrap gap-2 mb-6">
 					<span class="badge preset-filled-surface-200-800 rounded-full">
 						Loan: {resultsData.currencySymbol}{resultsData.loanAmountDisplay || formatLoanAmount(resultsData.loanAmount)}
 					</span>
@@ -135,6 +194,23 @@
 					<span class="badge preset-filled-surface-200-800 rounded-full">
 						Start Date: {formatDate(new Date(resultsData.startDate))}
 					</span>
+				</div>
+				
+				<!-- Progress Bars -->
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<MonthsProgressBar
+						monthsElapsed={monthsElapsed}
+						totalMonths={resultsData.paymentTerm * 12}
+						progress={monthsProgress}
+						noCard={true}
+					/>
+					<PrincipalProgressBar
+						principalPaid={currentPayment ? resultsData.loanAmount - currentPayment.remainingBalance : 0}
+						originalLoan={resultsData.loanAmount}
+						progress={principalProgress}
+						currencySymbol={resultsData.currencySymbol}
+						noCard={true}
+					/>
 				</div>
 			</div>
 
