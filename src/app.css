@@ -1,1 +1,28 @@
 @import "tailwindcss";
+
+@import '@skeletonlabs/skeleton';
+@import '@skeletonlabs/skeleton-svelte';
+@import '@skeletonlabs/skeleton/themes/hamlindigo';
+
+/* Style number input spinner arrows */
+.number-input::-webkit-outer-spin-button,
+.number-input::-webkit-inner-spin-button {
+	opacity: 0.4;
+	filter: brightness(1.5);
+}
+
+.number-input::-webkit-outer-spin-button:hover,
+.number-input::-webkit-inner-spin-button:hover {
+	opacity: 0.6;
+}
+
+/* Firefox */
+.number-input[type="number"] {
+	-moz-appearance: textfield;
+}
+
+.number-input[type="number"]::-webkit-outer-spin-button,
+.number-input[type="number"]::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}

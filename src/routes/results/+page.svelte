@@ -102,13 +102,13 @@
 	}
 </script>
 
-<div class="min-h-screen bg-gray-100 py-8 px-4">
+<div class="min-h-screen bg-surface-50 py-8 px-4">
 	<div class="max-w-6xl mx-auto">
 		<div class="relative mb-8">
-			<h1 class="text-4xl font-bold text-gray-900 text-center">Amortization Results</h1>
+			<h1 class="text-4xl font-bold text-surface-900 text-center">Amortization Results</h1>
 			<button
 				onclick={startNewSession}
-				class="absolute top-0 right-0 px-4 py-2 bg-gray-600 text-white rounded-md font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors cursor-pointer"
+				class="absolute top-0 right-0 px-4 py-2 bg-surface-600 text-white rounded-md font-medium hover:bg-surface-700 focus:outline-none focus:ring-2 focus:ring-surface-500 focus:ring-offset-2 transition-colors cursor-pointer"
 			>
 				New Session
 			</button>
@@ -116,78 +116,78 @@
 
 		{#if resultsData}
 			<!-- Monthly Payment -->
-			<div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-				<h2 class="text-2xl font-bold text-gray-900 mb-4">Monthly Payment</h2>
-				<p class="text-3xl font-semibold text-blue-600 mb-4">{formatCurrency(resultsData.monthlyPayment)}</p>
+			<div class="card bg-surface-100 rounded-lg shadow-lg p-6 mb-8">
+				<h2 class="text-2xl font-bold text-surface-900 mb-4">Monthly Payment</h2>
+				<p class="text-3xl font-semibold text-primary-600 mb-4">{formatCurrency(resultsData.monthlyPayment)}</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-surface-200 text-surface-800">
 						Loan: {resultsData.currencySymbol}{resultsData.loanAmountDisplay || formatLoanAmount(resultsData.loanAmount)}
 					</span>
-					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-surface-200 text-surface-800">
 						Rate: {resultsData.interestRate}%
 					</span>
-					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+					<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-surface-200 text-surface-800">
 						Term: {resultsData.paymentTerm} {resultsData.termUnit}
 					</span>
 				</div>
 			</div>
 
 			<!-- Amortization Schedule Table -->
-			<div class="bg-white rounded-lg shadow-lg p-6 overflow-x-auto">
+			<div class="card bg-surface-100 rounded-lg shadow-lg p-6 overflow-x-auto">
 				<div class="flex justify-between items-center mb-4">
-					<h2 class="text-2xl font-bold text-gray-900">Amortization Schedule</h2>
+					<h2 class="text-2xl font-bold text-surface-900">Amortization Schedule</h2>
 					<label class="flex items-center gap-2 cursor-pointer">
 						<input
 							type="checkbox"
 							bind:checked={hidePastMonths}
-							class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+							class="w-4 h-4 text-primary-600 border-surface-300 rounded focus:ring-primary-500"
 						/>
-						<span class="text-sm text-gray-700">Hide past months</span>
+						<span class="text-sm text-surface-700">Hide past months</span>
 					</label>
 				</div>
 				<div class="overflow-x-auto">
-					<table class="min-w-full divide-y divide-gray-200">
-						<thead class="bg-gray-50">
+					<table class="min-w-full divide-y divide-surface-200">
+						<thead class="bg-surface-200">
 							<tr>
-								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-left text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Month
 								</th>
-								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-left text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Date
 								</th>
-								<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-right text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Payment
 								</th>
-								<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-right text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Principal
 								</th>
-								<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-right text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Interest
 								</th>
-								<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th class="px-6 py-3 text-right text-xs font-medium text-surface-600 uppercase tracking-wider">
 									Remaining Balance
 								</th>
 							</tr>
 						</thead>
-						<tbody class="bg-white divide-y divide-gray-200">
+						<tbody class="bg-surface-50 divide-y divide-surface-200">
 							{#each filteredSchedule as payment}
-								<tr class="hover:bg-gray-50">
-									<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+								<tr class="hover:bg-surface-100">
+									<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-surface-900">
 										{payment.month}
 									</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-surface-700">
 										{formatDate(payment.date)}
 									</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-surface-900">
 										{formatCurrency(payment.payment)}
 									</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-surface-900">
 										{formatCurrency(payment.principal)}
 									</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-surface-500">
 										{formatCurrency(payment.interest)}
 									</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-surface-700">
 										{formatCurrency(payment.remainingBalance)}
 									</td>
 								</tr>
@@ -197,8 +197,8 @@
 				</div>
 			</div>
 		{:else}
-			<div class="bg-white rounded-lg shadow-lg p-6 text-center">
-				<p class="text-gray-600">Loading results...</p>
+			<div class="card bg-surface-100 rounded-lg shadow-lg p-6 text-center">
+				<p class="text-surface-600">Loading results...</p>
 			</div>
 		{/if}
 	</div>
