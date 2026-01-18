@@ -19,10 +19,33 @@
 /* Firefox */
 .number-input[type="number"] {
 	-moz-appearance: textfield;
+	appearance: textfield;
 }
 
 .number-input[type="number"]::-webkit-outer-spin-button,
 .number-input[type="number"]::-webkit-inner-spin-button {
 	-webkit-appearance: none;
 	margin: 0;
+}
+
+/* Form validation error styles */
+.input-error {
+	border-color: rgb(var(--color-error-500));
+}
+
+.input-error:focus {
+	outline-color: rgb(var(--color-error-500));
+}
+
+/* Screen reader only class for accessibility */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border-width: 0;
 }

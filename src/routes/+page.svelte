@@ -1,14 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-
-	type PaymentSchedule = {
-		month: number;
-		date: Date;
-		payment: number;
-		interest: number;
-		principal: number;
-		remainingBalance: number;
-	};
+	import { amortizationResults, type ResultsData } from '$lib/stores/amortization';
+	import { formatLoanAmount, parseLoanAmount } from '$lib/utils/formatting';
+	import { calculateAmortizationSchedule } from '$lib/utils/amortization';
+	import { validateSessionData, validateSessionValues, type SessionData } from '$lib/types/session';
+	import { parseSessionFile } from '$lib/utils/file-handling';
 
 	let loanAmount = $state(100000);
 	let loanAmountDisplay = $state('100,000');
@@ -18,13 +14,16 @@
 	let startDate = $state(new Date().toISOString().split('T')[0]);
 	let loadError = $state<string | null>(null);
 	let fileInput: HTMLInputElement | null = null;
-
-	function parseLoanAmount(value: string): number {
-		// Remove commas and parse as number
-		const cleaned = value.replace(/,/g, '');
-		const parsed = parseFloat(cleaned);
-		return isNaN(parsed) ? 0 : parsed;
-	}
+	let pendingHidePastMonths: boolean | undefined = undefined;
+	let isCalculating = $state(false);
+	
+	// Form validation errors
+	let validationErrors = $state({
+		loanAmount: '',
+		interestRate: '',
+		paymentTerm: '',
+		startDate: ''
+	});
 
 	function handleLoanAmountInput(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -47,181 +46,62 @@
 		loanAmount = parseLoanAmount(value);
 	}
 
-	function calculateAmortization() {
-		if (loanAmount <= 0 || interestRate < 0 || paymentTerm <= 0) {
+	function validateForm(): boolean {
+		validationErrors = {
+			loanAmount: loanAmount <= 0 ? 'Loan amount must be greater than 0' : '',
+			interestRate: interestRate < 0 ? 'Interest rate cannot be negative' : '',
+			paymentTerm: paymentTerm <= 0 ? 'Payment term must be greater than 0' : '',
+			startDate: !startDate ? 'Start date is required' : ''
+		};
+		return Object.values(validationErrors).every(err => !err);
+	}
+
+	async function calculateAmortization() {
+		if (!validateForm()) {
 			return;
 		}
+		
+		isCalculating = true;
+		// Allow UI to update
+		await new Promise(resolve => setTimeout(resolve, 0));
 
-		// Convert term to months (always in years)
-		const totalMonths = paymentTerm * 12;
-		
-		// Monthly interest rate (annual rate / 12 / 100)
-		const monthlyRate = interestRate / 12 / 100;
-		
-		// Calculate monthly payment using amortization formula
-		// M = P * [r(1+r)^n] / [(1+r)^n - 1]
-		let payment: number;
-		if (monthlyRate === 0) {
-			// If interest rate is 0, simply divide principal by number of months
-			payment = loanAmount / totalMonths;
-		} else {
-			const factor = Math.pow(1 + monthlyRate, totalMonths);
-			payment = loanAmount * (monthlyRate * factor) / (factor - 1);
-		}
-		
-		// Calculate schedule
-		let remainingBalance = loanAmount;
-		const newSchedule: PaymentSchedule[] = [];
-		const start = new Date(startDate);
-		
-		for (let month = 1; month <= totalMonths; month++) {
-			const interest = remainingBalance * monthlyRate;
-			const principal = payment - interest;
-			remainingBalance = Math.max(0, remainingBalance - principal);
+		try {
+			// Calculate amortization schedule using utility function
+			const schedule = calculateAmortizationSchedule(
+				loanAmount,
+				interestRate,
+				paymentTerm,
+				startDate
+			);
+
+			// Calculate monthly payment
+			const monthlyPayment = schedule[0]?.payment || 0;
 			
-			// Calculate date for this month
-			const paymentDate = new Date(start);
-			paymentDate.setMonth(start.getMonth() + month - 1);
+			// Store data in the store and navigate to results
+			const resultsData: ResultsData = {
+				loanAmount,
+				loanAmountDisplay,
+				interestRate,
+				paymentTerm,
+				termUnit: 'years' as const,
+				currencySymbol,
+				startDate,
+				monthlyPayment,
+				schedule: schedule.map(item => ({
+					...item,
+					date: item.date.toISOString()
+				})),
+				...(pendingHidePastMonths !== undefined && { hidePastMonths: pendingHidePastMonths })
+			};
 			
-			newSchedule.push({
-				month,
-				date: paymentDate,
-				payment: Math.round(payment * 100) / 100,
-				interest: Math.round(interest * 100) / 100,
-				principal: Math.round(principal * 100) / 100,
-				remainingBalance: Math.round(remainingBalance * 100) / 100
-			});
+			amortizationResults.set(resultsData);
+			pendingHidePastMonths = undefined; // Clear after use
+			goto('/results');
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : 'An error occurred during calculation.';
+		} finally {
+			isCalculating = false;
 		}
-		
-		// Check if hidePastMonths was stored (from loading a session)
-		let hidePastMonthsValue: boolean | undefined;
-		const storedHidePastMonths = sessionStorage.getItem('hidePastMonths');
-		if (storedHidePastMonths !== null) {
-			hidePastMonthsValue = JSON.parse(storedHidePastMonths);
-			sessionStorage.removeItem('hidePastMonths'); // Clean up
-		}
-
-		// Store data in sessionStorage and navigate to results
-		const resultsData = {
-			loanAmount,
-			loanAmountDisplay,
-			interestRate,
-			paymentTerm,
-			termUnit: 'years' as const,
-			currencySymbol,
-			startDate,
-			monthlyPayment: payment,
-			schedule: newSchedule.map(item => ({
-				...item,
-				date: item.date.toISOString()
-			})),
-			...(hidePastMonthsValue !== undefined && { hidePastMonths: hidePastMonthsValue })
-		};
-		
-		sessionStorage.setItem('amortizationResults', JSON.stringify(resultsData));
-		goto('/results');
-	}
-
-	type SessionData = {
-		version: number;
-		loanAmount: number;
-		interestRate: number;
-		paymentTerm: number;
-		startDate: string;
-		currencySymbol: string;
-		hidePastMonths: boolean;
-	};
-
-	function validateSessionData(data: unknown): data is SessionData {
-		if (!data || typeof data !== 'object') {
-			return false;
-		}
-
-		const obj = data as Record<string, unknown>;
-
-		// Check all required fields exist
-		if (
-			!('version' in obj) ||
-			!('loanAmount' in obj) ||
-			!('interestRate' in obj) ||
-			!('paymentTerm' in obj) ||
-			!('startDate' in obj) ||
-			!('currencySymbol' in obj) ||
-			!('hidePastMonths' in obj)
-		) {
-			return false;
-		}
-
-		// Validate version is an integer
-		if (typeof obj.version !== 'number' || !Number.isInteger(obj.version)) {
-			return false;
-		}
-
-		// Validate loanAmount is a number (float)
-		if (typeof obj.loanAmount !== 'number' || isNaN(obj.loanAmount)) {
-			return false;
-		}
-
-		// Validate interestRate is a number (float)
-		if (typeof obj.interestRate !== 'number' || isNaN(obj.interestRate)) {
-			return false;
-		}
-
-		// Validate paymentTerm is a number (float)
-		if (typeof obj.paymentTerm !== 'number' || isNaN(obj.paymentTerm)) {
-			return false;
-		}
-
-		// Validate startDate is a string
-		if (typeof obj.startDate !== 'string') {
-			return false;
-		}
-
-		// Validate currencySymbol is a string
-		if (typeof obj.currencySymbol !== 'string') {
-			return false;
-		}
-
-		// Validate hidePastMonths is a boolean
-		if (typeof obj.hidePastMonths !== 'boolean') {
-			return false;
-		}
-
-		return true;
-	}
-
-	function validateSessionValues(data: SessionData): string | null {
-		// Security: Validate reasonable ranges
-		if (data.loanAmount <= 0 || data.loanAmount > 1e15) {
-			return 'Loan amount must be greater than 0 and less than 1,000,000,000,000,000';
-		}
-
-		if (data.interestRate < 0 || data.interestRate > 1000) {
-			return 'Interest rate must be between 0 and 1000%';
-		}
-
-		if (data.paymentTerm <= 0 || data.paymentTerm > 1000) {
-			return 'Payment term must be greater than 0 and less than 1000 years';
-		}
-
-		// Validate startDate format (YYYY-MM-DD)
-		const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-		if (!dateRegex.test(data.startDate)) {
-			return 'Start date must be in YYYY-MM-DD format';
-		}
-
-		// Validate startDate is a valid date
-		const date = new Date(data.startDate);
-		if (isNaN(date.getTime())) {
-			return 'Start date must be a valid date';
-		}
-
-		// Validate currencySymbol length (max 5 characters)
-		if (data.currencySymbol.length > 5) {
-			return 'Currency symbol must be 5 characters or less';
-		}
-
-		return null;
 	}
 
 	async function handleFileLoad(event: Event) {
@@ -235,37 +115,12 @@
 			return;
 		}
 
-		// Security: Validate file type
-		if (file.type !== 'application/json' && !file.name.toLowerCase().endsWith('.json')) {
-			loadError = 'Invalid file type. Please select a JSON file.';
-			target.value = '';
-			return;
-		}
-
-		// Security: Validate file size (max 1MB)
-		const MAX_FILE_SIZE = 1024 * 1024; // 1MB
-		if (file.size > MAX_FILE_SIZE) {
-			loadError = 'File size exceeds maximum allowed size of 1MB.';
-			target.value = '';
-			return;
-		}
-
-		// Security: Validate file is not empty
-		if (file.size === 0) {
-			loadError = 'File is empty.';
-			target.value = '';
-			return;
-		}
-
 		try {
-			const fileContent = await file.text();
-
-			// Security: Validate JSON is parseable
-			let parsedData: unknown;
-			try {
-				parsedData = JSON.parse(fileContent);
-			} catch (parseError) {
-				loadError = 'Invalid JSON format. Please check the file and try again.';
+			// Parse and validate file
+			const { data: parsedData, error: parseError } = await parseSessionFile(file);
+			
+			if (parseError) {
+				loadError = parseError;
 				target.value = '';
 				return;
 			}
@@ -295,7 +150,7 @@
 			currencySymbol = sessionData.currencySymbol;
 
 			// Store hidePastMonths temporarily so calculateAmortization can include it
-			sessionStorage.setItem('hidePastMonths', JSON.stringify(sessionData.hidePastMonths));
+			pendingHidePastMonths = sessionData.hidePastMonths;
 
 			// Clear the file input
 			target.value = '';
@@ -304,17 +159,9 @@
 			// Automatically calculate and submit the form with loaded values
 			calculateAmortization();
 		} catch (error) {
-			loadError = 'An error occurred while reading the file. Please try again.';
+			loadError = error instanceof Error ? error.message : 'An error occurred while reading the file. Please try again.';
 			target.value = '';
 		}
-	}
-
-	function formatLoanAmount(value: number): string {
-		if (isNaN(value) || value === 0) return '0';
-		// Format with commas, allow decimals
-		const parts = value.toString().split('.');
-		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-		return parts.join('.');
 	}
 
 	function triggerFileInput() {
@@ -343,6 +190,7 @@
 							<span class="label-text">Loan Amount</span>
 						</label>
 						<div class="flex gap-2">
+							<label for="currencySymbol" class="sr-only">Currency Symbol</label>
 							<input
 								type="text"
 								id="currencySymbol"
@@ -350,15 +198,26 @@
 								maxlength="5"
 								class="input w-24"
 								required
+								aria-label="Currency symbol"
 							/>
-							<input
-								type="text"
-								id="loanAmount"
-								value={loanAmountDisplay}
-								oninput={handleLoanAmountInput}
-								class="input flex-1 min-w-0 number-input"
-								required
-							/>
+							<div class="flex-1 min-w-0">
+								<input
+									type="text"
+									id="loanAmount"
+									value={loanAmountDisplay}
+									oninput={handleLoanAmountInput}
+									class="input w-full number-input"
+									class:input-error={validationErrors.loanAmount}
+									required
+									aria-invalid={validationErrors.loanAmount ? 'true' : 'false'}
+									aria-describedby={validationErrors.loanAmount ? 'loanAmount-error' : undefined}
+								/>
+								{#if validationErrors.loanAmount}
+									<div id="loanAmount-error" role="alert" class="mt-1 text-sm text-error-500">
+										{validationErrors.loanAmount}
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
 					
@@ -373,8 +232,16 @@
 							min="0"
 							step="0.01"
 							class="input w-full number-input"
+							class:input-error={validationErrors.interestRate}
 							required
+							aria-invalid={validationErrors.interestRate ? 'true' : 'false'}
+							aria-describedby={validationErrors.interestRate ? 'interestRate-error' : undefined}
 						/>
+						{#if validationErrors.interestRate}
+							<div id="interestRate-error" role="alert" class="mt-1 text-sm text-error-500">
+								{validationErrors.interestRate}
+							</div>
+						{/if}
 					</div>
 					
 					<div class="w-full max-w-md">
@@ -388,8 +255,16 @@
 							min="1"
 							step="1"
 							class="input w-full number-input"
+							class:input-error={validationErrors.paymentTerm}
 							required
+							aria-invalid={validationErrors.paymentTerm ? 'true' : 'false'}
+							aria-describedby={validationErrors.paymentTerm ? 'paymentTerm-error' : undefined}
 						/>
+						{#if validationErrors.paymentTerm}
+							<div id="paymentTerm-error" role="alert" class="mt-1 text-sm text-error-500">
+								{validationErrors.paymentTerm}
+							</div>
+						{/if}
 					</div>
 					
 					<div class="w-full max-w-md">
@@ -401,16 +276,26 @@
 							id="startDate"
 							bind:value={startDate}
 							class="input w-full"
+							class:input-error={validationErrors.startDate}
 							required
+							aria-invalid={validationErrors.startDate ? 'true' : 'false'}
+							aria-describedby={validationErrors.startDate ? 'startDate-error' : undefined}
 						/>
+						{#if validationErrors.startDate}
+							<div id="startDate-error" role="alert" class="mt-1 text-sm text-error-500">
+								{validationErrors.startDate}
+							</div>
+						{/if}
 					</div>
 				</div>
 				
 				<button
 					type="submit"
 					class="btn preset-filled-primary-500 w-full"
+					disabled={isCalculating}
+					aria-busy={isCalculating}
 				>
-					Calculate Amortization Schedule
+					{isCalculating ? 'Calculating...' : 'Calculate Amortization Schedule'}
 				</button>
 
 				<input

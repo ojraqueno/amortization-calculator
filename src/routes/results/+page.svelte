@@ -1,78 +1,52 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { amortizationResults, type ResultsData } from '$lib/stores/amortization';
+	import { formatCurrency, formatDate, formatLoanAmount } from '$lib/utils/formatting';
+	import { downloadSessionFile } from '$lib/utils/file-handling';
 	import { onMount } from 'svelte';
-
-	type PaymentSchedule = {
-		month: number;
-		date: Date;
-		payment: number;
-		interest: number;
-		principal: number;
-		remainingBalance: number;
-	};
-
-	type ResultsData = {
-		loanAmount: number;
-		loanAmountDisplay: string;
-		interestRate: number;
-		paymentTerm: number;
-		termUnit: 'years' | 'months';
-		currencySymbol: string;
-		startDate: string;
-		monthlyPayment: number;
-		schedule: Array<{
-			month: number;
-			date: string;
-			payment: number;
-			interest: number;
-			principal: number;
-			remainingBalance: number;
-		}>;
-		hidePastMonths?: boolean;
-	};
 
 	let resultsData = $state<ResultsData | null>(null);
 	let hidePastMonths = $state(false);
 
+	let isInitializing = $state(true);
+
 	onMount(() => {
-		const stored = sessionStorage.getItem('amortizationResults');
-		if (stored) {
-			const data = JSON.parse(stored) as ResultsData;
-			resultsData = data;
-			// Restore hidePastMonths preference if it exists
-			if (data.hidePastMonths !== undefined) {
-				hidePastMonths = data.hidePastMonths;
+		// Subscribe to the store
+		const unsubscribe = amortizationResults.subscribe((data) => {
+			if (data) {
+				resultsData = data;
+				// Restore hidePastMonths preference if it exists
+				if (data.hidePastMonths !== undefined) {
+					hidePastMonths = data.hidePastMonths;
+				}
+				isInitializing = false;
+			} else {
+				// No data found, redirect to home
+				goto('/');
 			}
-		} else {
-			// No data found, redirect to home
-			goto('/');
-		}
+		});
+
+		// Cleanup subscription on unmount
+		return () => unsubscribe();
 	});
 
-	function formatCurrency(amount: number): string {
+	// Format currency with the store's currency symbol
+	function formatCurrencyWithSymbol(amount: number): string {
 		if (!resultsData) return '';
-		const formatted = new Intl.NumberFormat('en-US', {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
-		}).format(amount);
-		return `${resultsData.currencySymbol}${formatted}`;
+		return formatCurrency(amount, resultsData.currencySymbol);
 	}
 
-	function formatDate(date: Date): string {
-		return new Intl.DateTimeFormat('en-US', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		}).format(date);
-	}
-
-	function formatLoanAmount(value: number): string {
-		if (isNaN(value) || value === 0) return '';
-		// Format with commas, allow decimals
-		const parts = value.toString().split('.');
-		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-		return parts.join('.');
-	}
+	// Persist hidePastMonths changes back to the store (only after initialization)
+	$effect(() => {
+		if (!isInitializing && resultsData && hidePastMonths !== resultsData.hidePastMonths) {
+			amortizationResults.update((data) => {
+				if (data) {
+					return { ...data, hidePastMonths };
+				}
+				return data;
+			});
+		}
+	});
 
 	let schedule = $derived.by(() => {
 		if (!resultsData) return [];
@@ -102,7 +76,7 @@
 	});
 
 	function startNewSession() {
-		sessionStorage.removeItem('amortizationResults');
+		amortizationResults.set(null);
 		goto('/');
 	}
 
@@ -119,17 +93,7 @@
 			hidePastMonths: hidePastMonths
 		};
 
-		const jsonString = JSON.stringify(sessionData, null, 2);
-		const blob = new Blob([jsonString], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = 'amortization-session.json';
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
+		downloadSessionFile(sessionData);
 	}
 </script>
 
@@ -157,7 +121,7 @@
 			<!-- Monthly Payment -->
 			<div class="card preset-filled-neutral p-6 mb-8">
 				<h2 class="h3 mb-4">Monthly Payment</h2>
-				<p class="text-3xl font-semibold text-primary-500 mb-4">{formatCurrency(resultsData.monthlyPayment)}</p>
+				<p class="text-3xl font-semibold text-primary-500 mb-4">{formatCurrencyWithSymbol(resultsData.monthlyPayment)}</p>
 				<div class="flex flex-wrap gap-2">
 					<span class="badge preset-filled-surface-200-800 rounded-full">
 						Loan: {resultsData.currencySymbol}{resultsData.loanAmountDisplay || formatLoanAmount(resultsData.loanAmount)}
@@ -212,7 +176,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each filteredSchedule as payment}
+							{#each filteredSchedule as payment (payment.month)}
 								<tr>
 									<td class="px-6 py-4 whitespace-nowrap font-medium">
 										{payment.month}
@@ -221,16 +185,16 @@
 										{formatDate(payment.date)}
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-right">
-										{formatCurrency(payment.payment)}
+										{formatCurrencyWithSymbol(payment.payment)}
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-right">
-										{formatCurrency(payment.principal)}
+										{formatCurrencyWithSymbol(payment.principal)}
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-right opacity-70">
-										{formatCurrency(payment.interest)}
+										{formatCurrencyWithSymbol(payment.interest)}
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-right">
-										{formatCurrency(payment.remainingBalance)}
+										{formatCurrencyWithSymbol(payment.remainingBalance)}
 									</td>
 								</tr>
 							{/each}
