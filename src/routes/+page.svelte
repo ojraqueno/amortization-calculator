@@ -5,6 +5,7 @@
 	import { calculateAmortizationSchedule } from '$lib/utils/amortization';
 	import { validateSessionData, validateSessionValues, type SessionData } from '$lib/types/session';
 	import { parseSessionFile } from '$lib/utils/file-handling';
+	import { DatePicker, Portal, parseDate } from '@skeletonlabs/skeleton-svelte';
 
 	let loanAmount = $state(100000);
 	let loanAmountDisplay = $state('100,000');
@@ -268,19 +269,120 @@
 					</div>
 					
 					<div class="w-full max-w-md">
-						<label for="startDate" class="label">
-							<span class="label-text">Start Date</span>
-						</label>
-						<input
-							type="date"
-							id="startDate"
-							bind:value={startDate}
-							class="input w-full"
-							class:input-error={validationErrors.startDate}
-							required
-							aria-invalid={validationErrors.startDate ? 'true' : 'false'}
-							aria-describedby={validationErrors.startDate ? 'startDate-error' : undefined}
-						/>
+						<DatePicker
+							value={startDate ? [parseDate(startDate)] : undefined}
+							onValueChange={(e) => {
+								const selectedDate = e.value?.at(0);
+								if (selectedDate) {
+									const year = selectedDate.year;
+									const month = String(selectedDate.month).padStart(2, '0');
+									const day = String(selectedDate.day).padStart(2, '0');
+									startDate = `${year}-${month}-${day}`;
+								} else {
+									startDate = '';
+								}
+							}}
+							invalid={!!validationErrors.startDate}
+						>
+							<DatePicker.Label>
+								<span class="label-text">Start Date</span>
+							</DatePicker.Label>
+							<DatePicker.Control>
+								<DatePicker.Input placeholder="mm/dd/yyyy" />
+								<DatePicker.Trigger />
+							</DatePicker.Control>
+							<Portal>
+								<DatePicker.Positioner>
+									<DatePicker.Content>
+										<DatePicker.View view="day">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableHead>
+															<DatePicker.TableRow>
+																{#each datePicker().weekDays as weekDay, id (id)}
+																	<DatePicker.TableHeader>{weekDay.short}</DatePicker.TableHeader>
+																{/each}
+															</DatePicker.TableRow>
+														</DatePicker.TableHead>
+														<DatePicker.TableBody>
+															{#each datePicker().weeks as week, id (id)}
+																<DatePicker.TableRow>
+																	{#each week as day, id (id)}
+																		<DatePicker.TableCell value={day}>
+																			<DatePicker.TableCellTrigger>{day.day}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+										<DatePicker.View view="month">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableBody>
+															{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, id (id)}
+																<DatePicker.TableRow>
+																	{#each months as month, id (id)}
+																		<DatePicker.TableCell value={month.value}>
+																			<DatePicker.TableCellTrigger>{month.label}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+										<DatePicker.View view="year">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableBody>
+															{#each datePicker().getYearsGrid({ columns: 4 }) as years, id (id)}
+																<DatePicker.TableRow>
+																	{#each years as year, id (id)}
+																		<DatePicker.TableCell value={year.value}>
+																			<DatePicker.TableCellTrigger>{year.label}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+									</DatePicker.Content>
+								</DatePicker.Positioner>
+							</Portal>
+						</DatePicker>
 						{#if validationErrors.startDate}
 							<div id="startDate-error" role="alert" class="mt-1 text-sm text-error-500">
 								{validationErrors.startDate}
