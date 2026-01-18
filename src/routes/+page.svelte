@@ -14,7 +14,6 @@
 	let loanAmountDisplay = $state('100,000');
 	let interestRate = $state(5.0);
 	let paymentTerm = $state(30);
-	let termUnit = $state<'years' | 'months'>('years');
 	let currencySymbol = $state('$');
 	let startDate = $state(new Date().toISOString().split('T')[0]);
 
@@ -51,8 +50,8 @@
 			return;
 		}
 
-		// Convert term to months
-		const totalMonths = termUnit === 'years' ? paymentTerm * 12 : paymentTerm;
+		// Convert term to months (always in years)
+		const totalMonths = paymentTerm * 12;
 		
 		// Monthly interest rate (annual rate / 12 / 100)
 		const monthlyRate = interestRate / 12 / 100;
@@ -98,7 +97,7 @@
 			loanAmountDisplay,
 			interestRate,
 			paymentTerm,
-			termUnit,
+			termUnit: 'years' as const,
 			currencySymbol,
 			startDate,
 			monthlyPayment: payment,
@@ -113,14 +112,14 @@
 	}
 </script>
 
-<div class="min-h-screen bg-surface-50 py-8 px-4">
+<div class="min-h-screen py-8 px-4">
 	<div class="max-w-6xl mx-auto">
 		<div class="mb-8">
-			<h1 class="text-4xl font-bold text-surface-900 text-center">Amortization Calculator</h1>
+			<h2 class="h2 text-center">Amortization Calculator</h2>
 		</div>
 		
 		<!-- Input Form -->
-		<div class="card bg-surface-100 max-w-md mx-auto p-6 mb-8">
+		<div class="card preset-filled-neutral max-w-md mx-auto p-6 mb-8">
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
@@ -130,8 +129,8 @@
 			>
 				<div class="flex flex-col gap-6 items-center">
 					<div class="w-full max-w-md">
-						<label for="loanAmount" class="label block text-sm font-medium text-surface-700 mb-2">
-							Loan Amount
+						<label for="loanAmount" class="label">
+							<span class="label-text">Loan Amount</span>
 						</label>
 						<div class="flex gap-2">
 							<input
@@ -139,7 +138,7 @@
 								id="currencySymbol"
 								bind:value={currencySymbol}
 								maxlength="5"
-								class="input w-24 px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+								class="input w-24"
 								required
 							/>
 							<input
@@ -147,15 +146,15 @@
 								id="loanAmount"
 								value={loanAmountDisplay}
 								oninput={handleLoanAmountInput}
-								class="input flex-1 min-w-0 px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+								class="input flex-1 min-w-0 number-input"
 								required
 							/>
 						</div>
 					</div>
 					
 					<div class="w-full max-w-md">
-						<label for="interestRate" class="label block text-sm font-medium text-surface-700 mb-2">
-							Annual Interest Rate (%)
+						<label for="interestRate" class="label">
+							<span class="label-text">Annual Interest Rate (%)</span>
 						</label>
 						<input
 							type="number"
@@ -163,44 +162,35 @@
 							bind:value={interestRate}
 							min="0"
 							step="0.01"
-							class="input w-full px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 number-input"
+							class="input w-full number-input"
 							required
 						/>
 					</div>
 					
 					<div class="w-full max-w-md">
-						<label for="paymentTerm" class="label block text-sm font-medium text-surface-700 mb-2">
-							Payment Term
+						<label for="paymentTerm" class="label">
+							<span class="label-text">Payment Term (Years)</span>
 						</label>
-						<div class="flex gap-2">
-							<input
-								type="number"
-								id="paymentTerm"
-								bind:value={paymentTerm}
-								min="1"
-								step="1"
-								class="input flex-[2] min-w-[120px] px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 number-input"
-								required
-							/>
-							<select
-								bind:value={termUnit}
-								class="input w-24 flex-shrink-0 px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 whitespace-nowrap"
-							>
-								<option value="years">Years</option>
-								<option value="months">Months</option>
-							</select>
-						</div>
+						<input
+							type="number"
+							id="paymentTerm"
+							bind:value={paymentTerm}
+							min="1"
+							step="1"
+							class="input w-full number-input"
+							required
+						/>
 					</div>
 					
 					<div class="w-full max-w-md">
-						<label for="startDate" class="label block text-sm font-medium text-surface-700 mb-2">
-							Start Date
+						<label for="startDate" class="label">
+							<span class="label-text">Start Date</span>
 						</label>
 						<input
 							type="date"
 							id="startDate"
 							bind:value={startDate}
-							class="input w-full px-3 py-2 rounded border border-surface-300 bg-surface-50 text-surface-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+							class="input w-full"
 							required
 						/>
 					</div>
@@ -208,7 +198,7 @@
 				
 				<button
 					type="submit"
-					class="btn w-full bg-primary-600 text-white py-3 px-6 rounded font-semibold hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors cursor-pointer"
+					class="btn preset-filled-primary-500 w-full"
 				>
 					Calculate Amortization Schedule
 				</button>
