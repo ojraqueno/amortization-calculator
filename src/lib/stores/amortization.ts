@@ -1,12 +1,20 @@
 import { writable } from 'svelte/store';
 
 export type PaymentSchedule = {
-	month: number;
+	month?: number;
 	date: Date;
 	payment: number;
 	interest: number;
 	principal: number;
 	remainingBalance: number;
+};
+
+export type LoanUpdate = {
+	id: string;
+	principalPayment: number;
+	newInterestRate: number;
+	date: string;
+	updateType: 'retain-term' | 'retain-payment';
 };
 
 export type ResultsData = {
@@ -19,7 +27,7 @@ export type ResultsData = {
 	startDate: string;
 	monthlyPayment: number;
 	schedule: Array<{
-		month: number;
+		month?: number;
 		date: string;
 		payment: number;
 		interest: number;
@@ -27,6 +35,7 @@ export type ResultsData = {
 		remainingBalance: number;
 	}>;
 	hidePastMonths?: boolean;
+	loanUpdates?: LoanUpdate[];
 };
 
 export const amortizationResults = writable<ResultsData | null>(null);

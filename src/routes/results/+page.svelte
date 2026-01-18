@@ -1,16 +1,26 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { amortizationResults, type ResultsData } from '$lib/stores/amortization';
-	import { formatCurrency, formatDate, formatLoanAmount } from '$lib/utils/formatting';
+	import { amortizationResults, type ResultsData, type LoanUpdate } from '$lib/stores/amortization';
+	import { formatCurrency, formatDate, formatLoanAmount, parseLoanAmount } from '$lib/utils/formatting';
 	import { downloadSessionFile } from '$lib/utils/file-handling';
 	import MonthsProgressBar from '$lib/components/MonthsProgressBar.svelte';
 	import PrincipalProgressBar from '$lib/components/PrincipalProgressBar.svelte';
+	import { recalculateScheduleWithUpdates } from '$lib/utils/amortization';
+	import { DatePicker, Dialog, Portal, parseDate } from '@skeletonlabs/skeleton-svelte';
 	import { onMount } from 'svelte';
 
 	let resultsData = $state<ResultsData | null>(null);
 	let hidePastMonths = $state(false);
 
 	let isInitializing = $state(true);
+	let showUpdateModal = $state(false);
+	
+	// Loan update form state
+	let principalPaymentDisplay = $state('');
+	let principalPayment = $state(0);
+	let newInterestRate = $state(0);
+	let updateDate = $state(new Date().toISOString().split('T')[0]);
+	let updateType = $state<'retain-term' | 'retain-payment'>('retain-term');
 
 	onMount(() => {
 		// Subscribe to the store
@@ -52,10 +62,24 @@
 
 	let schedule = $derived.by(() => {
 		if (!resultsData) return [];
-		return resultsData.schedule.map(item => ({
+		
+		const baseSchedule = resultsData.schedule.map(item => ({
 			...item,
 			date: new Date(item.date)
 		}));
+		
+		// Apply loan updates if any
+		if (resultsData.loanUpdates && resultsData.loanUpdates.length > 0) {
+			return recalculateScheduleWithUpdates(
+				baseSchedule,
+				resultsData.loanUpdates,
+				resultsData.interestRate,
+				resultsData.loanAmount,
+				resultsData.paymentTerm
+			);
+		}
+		
+		return baseSchedule;
 	});
 
 	let filteredSchedule = $derived.by(() => {
@@ -154,6 +178,89 @@
 
 		downloadSessionFile(sessionData);
 	}
+
+	function handlePrincipalPaymentInput(event: Event) {
+		const target = event.target as HTMLInputElement;
+		let value = target.value;
+		
+		// Allow only digits, commas, and one decimal point
+		value = value.replace(/[^\d,.]/g, '');
+		
+		// Ensure only one decimal point
+		const decimalIndex = value.indexOf('.');
+		if (decimalIndex !== -1) {
+			const beforeDecimal = value.substring(0, decimalIndex);
+			const afterDecimal = value.substring(decimalIndex + 1);
+			value = beforeDecimal.replace(/[^\d,]/g, '') + '.' + afterDecimal.replace(/[^\d]/g, '');
+		} else {
+			value = value.replace(/[^\d,]/g, '');
+		}
+		
+		principalPaymentDisplay = value;
+		principalPayment = parseLoanAmount(value);
+	}
+
+	function openUpdateModal() {
+		if (!resultsData) return;
+		// Initialize form with current values
+		principalPaymentDisplay = '';
+		principalPayment = 0;
+		newInterestRate = resultsData.interestRate;
+		updateDate = new Date().toISOString().split('T')[0];
+		updateType = 'retain-term';
+		showUpdateModal = true;
+	}
+
+	function closeUpdateModal() {
+		showUpdateModal = false;
+	}
+
+	function submitLoanUpdate() {
+		if (!resultsData || principalPayment <= 0) return;
+
+		const update: LoanUpdate = {
+			id: crypto.randomUUID(),
+			principalPayment,
+			newInterestRate,
+			date: updateDate,
+			updateType
+		};
+
+		const updates = [...(resultsData.loanUpdates || []), update];
+		
+		amortizationResults.update((data) => {
+			if (data) {
+				return { ...data, loanUpdates: updates };
+			}
+			return data;
+		});
+
+		closeUpdateModal();
+	}
+
+	function removeLoanUpdate(updateId: string) {
+		if (!resultsData) return;
+
+		const updates = (resultsData.loanUpdates || []).filter(update => update.id !== updateId);
+		
+		amortizationResults.update((data) => {
+			if (data) {
+				return { ...data, loanUpdates: updates };
+			}
+			return data;
+		});
+	}
+
+	function clearAllLoanUpdates() {
+		if (!resultsData) return;
+		
+		amortizationResults.update((data) => {
+			if (data) {
+				return { ...data, loanUpdates: [] };
+			}
+			return data;
+		});
+	}
 </script>
 
 <div class="min-h-screen py-8 px-4">
@@ -161,6 +268,12 @@
 		<div class="relative mb-8">
 			<h1 class="h1 text-center">Amortization Results</h1>
 			<div class="absolute top-0 right-0 flex gap-2">
+				<button
+					onclick={openUpdateModal}
+					class="btn preset-filled-primary-500"
+				>
+					Update Loan
+				</button>
 				<button
 					onclick={saveSession}
 					class="btn preset-filled-primary-500"
@@ -227,6 +340,41 @@
 						<span class="text-sm">Hide past months</span>
 					</label>
 				</div>
+				
+				{#if resultsData.loanUpdates && resultsData.loanUpdates.length > 0}
+					<div class="mb-4">
+						<div class="flex items-center justify-between mb-2">
+							<span class="text-sm font-medium">Loan Updates:</span>
+							<button
+								onclick={clearAllLoanUpdates}
+								class="btn preset-tonal-error text-sm"
+								aria-label="Clear all loan updates"
+							>
+								Clear All
+							</button>
+						</div>
+						<div class="flex flex-wrap gap-2">
+							{#each resultsData.loanUpdates as update}
+								<div class="badge preset-filled-surface-200-800 rounded-full flex items-center gap-2">
+									<span>
+										Extra Payment: {formatCurrencyWithSymbol(update.principalPayment)} | 
+										New Rate: {update.newInterestRate}% | 
+										Date: {formatDate(new Date(update.date))} | 
+										{update.updateType === 'retain-term' ? 'Retain Term' : 'Retain Payment'}
+									</span>
+									<button
+										onclick={() => removeLoanUpdate(update.id)}
+										class="ml-2 hover:opacity-70 transition-opacity"
+										aria-label="Remove this loan update"
+										title="Remove this loan update"
+									>
+										<span aria-hidden="true" class="text-lg">×</span>
+									</button>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 				<div class="overflow-x-auto">
 					<table class="table min-w-full">
 						<thead>
@@ -252,10 +400,10 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each filteredSchedule as payment (payment.month)}
+							{#each filteredSchedule as payment (payment.month ?? payment.date.getTime())}
 								<tr>
 									<td class="px-6 py-4 whitespace-nowrap font-medium">
-										{payment.month}
+										{payment.month ?? '—'}
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap">
 										{formatDate(payment.date)}
@@ -285,3 +433,215 @@
 		{/if}
 	</div>
 </div>
+
+<!-- Loan Update Modal -->
+<Dialog 
+	open={showUpdateModal} 
+	onOpenChange={(details) => { 
+		showUpdateModal = details.open;
+	}}
+>
+	<Portal>
+		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-900/50 backdrop-blur-sm" />
+		<Dialog.Positioner class="fixed inset-0 z-50 flex items-center justify-center p-4">
+			<Dialog.Content class="card preset-filled-neutral p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl bg-surface-100-900">
+				<header class="flex justify-between items-center mb-4">
+					<Dialog.Title class="h3">Loan Update</Dialog.Title>
+					<Dialog.CloseTrigger class="btn-icon preset-tonal">
+						<span aria-hidden="true">×</span>
+					</Dialog.CloseTrigger>
+				</header>
+
+				<form onsubmit={(e) => { e.preventDefault(); submitLoanUpdate(); }} class="space-y-4">
+					<div>
+						<label for="principalPayment" class="label">
+							<span class="label-text">Principal Payment Amount</span>
+						</label>
+						<div class="flex gap-2 items-center">
+							<span class="text-lg">{resultsData?.currencySymbol || '$'}</span>
+							<input
+								type="text"
+								id="principalPayment"
+								value={principalPaymentDisplay}
+								oninput={handlePrincipalPaymentInput}
+								class="input flex-1"
+								placeholder="0"
+								required
+							/>
+						</div>
+					</div>
+
+					<div>
+						<label for="newInterestRate" class="label">
+							<span class="label-text">New Interest Rate (%)</span>
+						</label>
+						<input
+							type="number"
+							id="newInterestRate"
+							bind:value={newInterestRate}
+							min="0"
+							step="0.01"
+							class="input w-full"
+							required
+						/>
+					</div>
+
+					<div>
+						<DatePicker
+							value={updateDate ? [parseDate(updateDate)] : undefined}
+							onValueChange={(e) => {
+								const selectedDate = e.value?.at(0);
+								if (selectedDate) {
+									const year = selectedDate.year;
+									const month = String(selectedDate.month).padStart(2, '0');
+									const day = String(selectedDate.day).padStart(2, '0');
+									updateDate = `${year}-${month}-${day}`;
+								} else {
+									updateDate = '';
+								}
+							}}
+						>
+							<DatePicker.Label>
+								<span class="label-text">Update Date</span>
+							</DatePicker.Label>
+							<DatePicker.Control>
+								<DatePicker.Input placeholder="mm/dd/yyyy" />
+								<DatePicker.Trigger />
+							</DatePicker.Control>
+							<Portal>
+								<DatePicker.Positioner class="!z-[100]">
+									<DatePicker.Content class="!z-[100]">
+										<DatePicker.View view="day">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableHead>
+															<DatePicker.TableRow>
+																{#each datePicker().weekDays as weekDay, id (id)}
+																	<DatePicker.TableHeader>{weekDay.short}</DatePicker.TableHeader>
+																{/each}
+															</DatePicker.TableRow>
+														</DatePicker.TableHead>
+														<DatePicker.TableBody>
+															{#each datePicker().weeks as week, id (id)}
+																<DatePicker.TableRow>
+																	{#each week as day, id (id)}
+																		<DatePicker.TableCell value={day}>
+																			<DatePicker.TableCellTrigger>{day.day}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+										<DatePicker.View view="month">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableBody>
+															{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, id (id)}
+																<DatePicker.TableRow>
+																	{#each months as month, id (id)}
+																		<DatePicker.TableCell value={month.value}>
+																			<DatePicker.TableCellTrigger>{month.label}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+										<DatePicker.View view="year">
+											<DatePicker.Context>
+												{#snippet children(datePicker)}
+													<DatePicker.ViewControl>
+														<DatePicker.PrevTrigger />
+														<DatePicker.ViewTrigger>
+															<DatePicker.RangeText />
+														</DatePicker.ViewTrigger>
+														<DatePicker.NextTrigger />
+													</DatePicker.ViewControl>
+													<DatePicker.Table>
+														<DatePicker.TableBody>
+															{#each datePicker().getYearsGrid({ columns: 4 }) as years, id (id)}
+																<DatePicker.TableRow>
+																	{#each years as year, id (id)}
+																		<DatePicker.TableCell value={year.value}>
+																			<DatePicker.TableCellTrigger>{year.label}</DatePicker.TableCellTrigger>
+																		</DatePicker.TableCell>
+																	{/each}
+																</DatePicker.TableRow>
+															{/each}
+														</DatePicker.TableBody>
+													</DatePicker.Table>
+												{/snippet}
+											</DatePicker.Context>
+										</DatePicker.View>
+									</DatePicker.Content>
+								</DatePicker.Positioner>
+							</Portal>
+						</DatePicker>
+					</div>
+
+					<fieldset>
+						<legend class="label-text mb-2">Update Type</legend>
+						<div class="flex flex-col gap-3">
+							<label class="flex items-center gap-2 cursor-pointer">
+								<input
+									type="radio"
+									name="updateType"
+									value="retain-term"
+									bind:group={updateType}
+									class="radio"
+								/>
+								<span>Retain payment term but lower the amount</span>
+							</label>
+							<label class="flex items-center gap-2 cursor-pointer">
+								<input
+									type="radio"
+									name="updateType"
+									value="retain-payment"
+									bind:group={updateType}
+									class="radio"
+								/>
+								<span>Retain payment amount but shorten the term</span>
+							</label>
+						</div>
+					</fieldset>
+
+					<footer class="flex gap-2 justify-end mt-6">
+						<Dialog.CloseTrigger class="btn preset-tonal">
+							Cancel
+						</Dialog.CloseTrigger>
+						<button
+							type="submit"
+							class="btn preset-filled-primary-500"
+							disabled={principalPayment <= 0}
+						>
+							Apply Update
+						</button>
+					</footer>
+				</form>
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Portal>
+</Dialog>
