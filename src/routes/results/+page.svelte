@@ -28,6 +28,7 @@
 			principal: number;
 			remainingBalance: number;
 		}>;
+		hidePastMonths?: boolean;
 	};
 
 	let resultsData = $state<ResultsData | null>(null);
@@ -38,6 +39,10 @@
 		if (stored) {
 			const data = JSON.parse(stored) as ResultsData;
 			resultsData = data;
+			// Restore hidePastMonths preference if it exists
+			if (data.hidePastMonths !== undefined) {
+				hidePastMonths = data.hidePastMonths;
+			}
 		} else {
 			// No data found, redirect to home
 			goto('/');
@@ -100,18 +105,52 @@
 		sessionStorage.removeItem('amortizationResults');
 		goto('/');
 	}
+
+	function saveSession() {
+		if (!resultsData) return;
+
+		const sessionData = {
+			version: 1,
+			loanAmount: resultsData.loanAmount,
+			interestRate: resultsData.interestRate,
+			paymentTerm: resultsData.paymentTerm,
+			startDate: resultsData.startDate,
+			currencySymbol: resultsData.currencySymbol,
+			hidePastMonths: hidePastMonths
+		};
+
+		const jsonString = JSON.stringify(sessionData, null, 2);
+		const blob = new Blob([jsonString], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = 'amortization-session.json';
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <div class="min-h-screen py-8 px-4">
 	<div class="max-w-6xl mx-auto">
 		<div class="relative mb-8">
 			<h1 class="h1 text-center">Amortization Results</h1>
-			<button
-				onclick={startNewSession}
-				class="btn preset-filled-primary-500 absolute top-0 right-0"
-			>
-				New Session
-			</button>
+			<div class="absolute top-0 right-0 flex gap-2">
+				<button
+					onclick={saveSession}
+					class="btn preset-filled-primary-500"
+				>
+					Save Session
+				</button>
+				<button
+					onclick={startNewSession}
+					class="btn preset-filled-primary-500"
+				>
+					New Session
+				</button>
+			</div>
 		</div>
 
 		{#if resultsData}
@@ -128,6 +167,9 @@
 					</span>
 					<span class="badge preset-filled-surface-200-800 rounded-full">
 						Term: {resultsData.paymentTerm} years
+					</span>
+					<span class="badge preset-filled-surface-200-800 rounded-full">
+						Start Date: {formatDate(new Date(resultsData.startDate))}
 					</span>
 				</div>
 			</div>
@@ -155,18 +197,18 @@
 								<th class="px-6 py-3 text-left uppercase tracking-wider">
 									Date
 								</th>
-								<th class="px-6 py-3 text-right uppercase tracking-wider">
-									Payment
-								</th>
-								<th class="px-6 py-3 text-right uppercase tracking-wider">
-									Principal
-								</th>
-								<th class="px-6 py-3 text-right uppercase tracking-wider">
-									Interest
-								</th>
-								<th class="px-6 py-3 text-right uppercase tracking-wider">
-									Remaining Balance
-								</th>
+							<th class="px-6 py-3 text-right uppercase tracking-wider" style="text-align: right;">
+								Payment
+							</th>
+							<th class="px-6 py-3 text-right uppercase tracking-wider" style="text-align: right;">
+								Principal
+							</th>
+							<th class="px-6 py-3 text-right uppercase tracking-wider" style="text-align: right;">
+								Interest
+							</th>
+							<th class="px-6 py-3 text-right uppercase tracking-wider" style="text-align: right;">
+								Remaining Balance
+							</th>
 							</tr>
 						</thead>
 						<tbody>
