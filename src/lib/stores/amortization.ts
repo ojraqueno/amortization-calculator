@@ -36,6 +36,7 @@ export type ResultsData = {
 	}>;
 	hidePastMonths?: boolean;
 	loanUpdates?: LoanUpdate[];
+	propertyName: string;
 };
 
 export const amortizationResults = writable<ResultsData | null>(null);

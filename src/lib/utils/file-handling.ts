@@ -43,12 +43,12 @@ export async function parseSessionFile(file: File): Promise<{ data: unknown; err
 		let parsedData: unknown;
 		try {
 			parsedData = JSON.parse(fileContent);
-		} catch (parseError) {
+		} catch {
 			return { data: null, error: 'Invalid JSON format. Please check the file and try again.' };
 		}
 
 		return { data: parsedData, error: null };
-	} catch (error) {
+	} catch {
 		return { data: null, error: 'An error occurred while reading the file. Please try again.' };
 	}
 }

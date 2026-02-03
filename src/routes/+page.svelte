@@ -17,9 +17,11 @@
 	let fileInput: HTMLInputElement | null = null;
 	let pendingHidePastMonths: boolean | undefined = undefined;
 	let isCalculating = $state(false);
-	
+	let propertyName = $state('');
+
 	// Form validation errors
 	let validationErrors = $state({
+		propertyName: '',
 		loanAmount: '',
 		interestRate: '',
 		paymentTerm: '',
@@ -49,6 +51,7 @@
 
 	function validateForm(): boolean {
 		validationErrors = {
+			propertyName: !propertyName.trim() ? 'Property name is required' : '',
 			loanAmount: loanAmount <= 0 ? 'Loan amount must be greater than 0' : '',
 			interestRate: interestRate < 0 ? 'Interest rate cannot be negative' : '',
 			paymentTerm: paymentTerm <= 0 ? 'Payment term must be greater than 0' : '',
@@ -64,7 +67,7 @@
 		
 		isCalculating = true;
 		// Allow UI to update
-		await new Promise(resolve => setTimeout(resolve, 0));
+		await new Promise(resolve => globalThis.setTimeout(resolve, 0));
 
 		try {
 			// Calculate amortization schedule using utility function
@@ -88,6 +91,7 @@
 				currencySymbol,
 				startDate,
 				monthlyPayment,
+				propertyName,
 				schedule: schedule.map(item => ({
 					...item,
 					date: item.date.toISOString()
@@ -149,6 +153,7 @@
 			paymentTerm = sessionData.paymentTerm;
 			startDate = sessionData.startDate;
 			currencySymbol = sessionData.currencySymbol;
+			propertyName = sessionData.propertyName;
 
 			// Store hidePastMonths temporarily so calculateAmortization can include it
 			pendingHidePastMonths = sessionData.hidePastMonths;
@@ -187,6 +192,29 @@
 			>
 				<div class="flex flex-col gap-6 items-center">
 					<div class="w-full max-w-md">
+					<label for="propertyName" class="label">
+						<span class="label-text">Property Name</span>
+						</label>
+						<input
+							type="text"
+							id="propertyName"
+							bind:value={propertyName}
+							maxlength="100"
+							class="input w-full"
+
+							required
+							class:input-error={validationErrors.propertyName}
+							aria-invalid={validationErrors.propertyName ? 'true' : 'false'}
+							aria-describedby={validationErrors.propertyName ? 'propertyName-error' : undefined}
+						/>
+						{#if validationErrors.propertyName}
+							<div id="propertyName-error" role="alert" class="mt-1 text-sm text-error-500">
+								{validationErrors.propertyName}
+							</div>
+					{/if}
+				</div>
+
+				<div class="w-full max-w-md">
 						<label for="loanAmount" class="label">
 							<span class="label-text">Loan Amount</span>
 						</label>

@@ -10,6 +10,7 @@ export type SessionData = {
 	startDate: string;
 	currencySymbol: string;
 	hidePastMonths: boolean;
+	propertyName: string;
 };
 
 /**
@@ -30,7 +31,8 @@ export function validateSessionData(data: unknown): data is SessionData {
 		!('paymentTerm' in obj) ||
 		!('startDate' in obj) ||
 		!('currencySymbol' in obj) ||
-		!('hidePastMonths' in obj)
+		!('hidePastMonths' in obj) ||
+		!('propertyName' in obj)
 	) {
 		return false;
 	}
@@ -70,6 +72,11 @@ export function validateSessionData(data: unknown): data is SessionData {
 		return false;
 	}
 
+	// Validate propertyName is a string if present
+	if ('propertyName' in obj && typeof obj.propertyName !== 'string') {
+		return false;
+	}
+
 	return true;
 }
 
@@ -100,6 +107,11 @@ export function validateSessionValues(data: SessionData): string | null {
 	const date = new Date(data.startDate);
 	if (isNaN(date.getTime())) {
 		return 'Start date must be a valid date';
+	}
+
+	// Validate propertyName length (max 100 characters)
+	if (data.propertyName && data.propertyName.length > 100) {
+		return 'Property name must be 100 characters or less';
 	}
 
 	// Validate currencySymbol length (max 5 characters)

@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { SvelteDate } from 'svelte/reactivity';
 	import { amortizationResults, type ResultsData, type LoanUpdate } from '$lib/stores/amortization';
 	import { formatCurrency, formatDate, formatLoanAmount, parseLoanAmount } from '$lib/utils/formatting';
 	import { downloadSessionFile } from '$lib/utils/file-handling';
 	import MonthsProgressBar from '$lib/components/MonthsProgressBar.svelte';
 	import PrincipalProgressBar from '$lib/components/PrincipalProgressBar.svelte';
 	import { recalculateScheduleWithUpdates } from '$lib/utils/amortization';
-	import { DatePicker, Dialog, Portal, parseDate } from '@skeletonlabs/skeleton-svelte';
+	import { AppBar, DatePicker, Dialog, Portal, parseDate } from '@skeletonlabs/skeleton-svelte';
 	import { onMount } from 'svelte';
 
 	let resultsData = $state<ResultsData | null>(null);
@@ -24,7 +25,7 @@
 
 	onMount(() => {
 		// Subscribe to the store
-		const unsubscribe = amortizationResults.subscribe((data) => {
+		const unsubscribe = amortizationResults.subscribe(async (data) => {
 			if (data) {
 				resultsData = data;
 				// Restore hidePastMonths preference if it exists
@@ -65,7 +66,7 @@
 		
 		const baseSchedule = resultsData.schedule.map(item => ({
 			...item,
-			date: new Date(item.date)
+			date: new SvelteDate(item.date)
 		}));
 		
 		// Apply loan updates if any
@@ -82,17 +83,20 @@
 		return baseSchedule;
 	});
 
+	// Count only entries with a month number (exclude extra principal payments)
+	let totalMonths = $derived.by(() => schedule.filter((s) => s.month !== undefined).length);
+
 	let filteredSchedule = $derived.by(() => {
 		if (!hidePastMonths) {
 			return schedule;
 		}
 		
-		const today = new Date();
+		const today = new SvelteDate();
 		today.setHours(0, 0, 0, 0);
 		const todayTime = today.getTime();
 		
 		return schedule.filter(payment => {
-			const paymentDate = new Date(payment.date);
+			const paymentDate = new SvelteDate(payment.date);
 			paymentDate.setHours(0, 0, 0, 0);
 			const paymentTime = paymentDate.getTime();
 			
@@ -103,7 +107,7 @@
 
 	// Calculate progress values for progress bars as of today
 	// Helper function to calculate months between two dates
-	function monthsBetweenDates(startDate: Date, endDate: Date): number {
+	function _monthsBetweenDates(startDate: Date, endDate: Date): number {
 		const startYear = startDate.getFullYear();
 		const startMonth = startDate.getMonth();
 		const endYear = endDate.getFullYear();
@@ -115,12 +119,12 @@
 	let currentPayment = $derived.by(() => {
 		if (!resultsData || schedule.length === 0) return null;
 		
-		const today = new Date();
+		const today = new SvelteDate();
 		today.setHours(0, 0, 0, 0);
 		
 		// Find the most recent payment that has occurred (payment date <= today)
 		for (let i = schedule.length - 1; i >= 0; i--) {
-			const paymentDate = new Date(schedule[i].date);
+			const paymentDate = new SvelteDate(schedule[i].date);
 			paymentDate.setHours(0, 0, 0, 0);
 			if (paymentDate <= today) {
 				return schedule[i];
@@ -133,18 +137,29 @@
 
 	// Calculate months elapsed as of today
 	let monthsElapsed = $derived.by(() => {
-		if (!resultsData) return 0;
-		const startDate = new Date(resultsData.startDate);
-		const today = new Date();
-		const totalMonths = resultsData.paymentTerm * 12;
-		return Math.max(0, Math.min(monthsBetweenDates(startDate, today), totalMonths));
+		if (!resultsData || schedule.length === 0) return 0;
+		const today = new SvelteDate();
+		today.setHours(0, 0, 0, 0);
+		
+		// Count payments that have occurred (payment date <= today) with a month number
+		let elapsed = 0;
+		for (const payment of schedule) {
+			if (payment.month !== undefined) {
+				const paymentDate = new SvelteDate(payment.date);
+				paymentDate.setHours(0, 0, 0, 0);
+				if (paymentDate <= today) {
+					elapsed++;
+				}
+			}
+		}
+		
+		return elapsed;
 	});
 
 	// Months Progress: Percentage of months completed as of today
 	let monthsProgress = $derived.by(() => {
-		if (!resultsData || schedule.length === 0) return 0;
-		const totalMonths = resultsData.paymentTerm * 12;
-		return totalMonths > 0 ? Math.min(100, (monthsElapsed / totalMonths) * 100) : 0;
+		if (!resultsData || totalMonths === 0) return 0;
+		return Math.min(100, (monthsElapsed / totalMonths) * 100);
 	});
 
 	// Principal Progress: Percentage of principal paid off as of today
@@ -173,7 +188,8 @@
 			paymentTerm: resultsData.paymentTerm,
 			startDate: resultsData.startDate,
 			currencySymbol: resultsData.currencySymbol,
-			hidePastMonths: hidePastMonths
+			hidePastMonths: hidePastMonths,
+			propertyName: resultsData.propertyName
 		};
 
 		downloadSessionFile(sessionData);
@@ -204,7 +220,6 @@
 		if (!resultsData) return;
 		// Initialize form with current values
 		principalPaymentDisplay = '';
-		principalPayment = 0;
 		newInterestRate = resultsData.interestRate;
 		updateDate = new Date().toISOString().split('T')[0];
 		updateType = 'retain-term';
@@ -219,7 +234,7 @@
 		if (!resultsData || principalPayment <= 0) return;
 
 		const update: LoanUpdate = {
-			id: crypto.randomUUID(),
+			id: globalThis.crypto.randomUUID(),
 			principalPayment,
 			newInterestRate,
 			date: updateDate,
@@ -263,17 +278,13 @@
 	}
 </script>
 
-<div class="min-h-screen py-8 px-4">
-	<div class="max-w-6xl mx-auto">
-		<div class="relative mb-8">
-			<h1 class="h1 text-center">Amortization Results</h1>
-			<div class="absolute top-0 right-0 flex gap-2">
-				<button
-					onclick={openUpdateModal}
-					class="btn preset-filled-primary-500"
-				>
-					Update Loan
-				</button>
+<div class="min-h-screen">
+	<AppBar class="mb-8 shadow-sm">
+		<AppBar.Toolbar class="w-full max-w-6xl mx-auto px-4 flex justify-between items-center">
+			<div class="h3 md:h2 truncate pr-4">
+				{resultsData?.propertyName || ''}
+			</div>
+			<div class="flex gap-2 shrink-0">
 				<button
 					onclick={saveSession}
 					class="btn preset-filled-primary-500"
@@ -287,9 +298,12 @@
 					New Session
 				</button>
 			</div>
-		</div>
+		</AppBar.Toolbar>
+	</AppBar>
 
-		{#if resultsData}
+	<div class="px-4">
+		<div class="max-w-6xl mx-auto">
+			{#if resultsData}
 			<!-- Monthly Payment with Progress Bars -->
 			<div class="card preset-filled-neutral p-6 mb-8">
 				<h2 class="h3 mb-4">Monthly Payment</h2>
@@ -313,7 +327,7 @@
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<MonthsProgressBar
 						monthsElapsed={monthsElapsed}
-						totalMonths={resultsData.paymentTerm * 12}
+						totalMonths={totalMonths}
 						progress={monthsProgress}
 						noCard={true}
 					/>
@@ -329,16 +343,24 @@
 
 			<!-- Amortization Schedule Table -->
 			<div class="card preset-filled-neutral p-6 overflow-x-auto">
-				<div class="flex justify-between items-center mb-4">
+				<div class="flex flex-wrap justify-between items-center gap-3 mb-4">
 					<h2 class="h3">Amortization Schedule</h2>
-					<label class="flex items-center gap-2 cursor-pointer">
-						<input
-							type="checkbox"
-							bind:checked={hidePastMonths}
-							class="checkbox"
-						/>
-						<span class="text-sm">Hide past months</span>
-					</label>
+					<div class="flex items-center gap-3">
+						<label class="flex items-center gap-2 cursor-pointer">
+							<input
+								type="checkbox"
+								bind:checked={hidePastMonths}
+								class="checkbox"
+							/>
+							<span class="text-sm">Hide past months</span>
+						</label>
+						<button
+							onclick={openUpdateModal}
+							class="btn preset-filled-primary-500"
+						>
+							Update Loan
+						</button>
+					</div>
 				</div>
 				
 				{#if resultsData.loanUpdates && resultsData.loanUpdates.length > 0}
@@ -354,7 +376,7 @@
 							</button>
 						</div>
 						<div class="flex flex-wrap gap-2">
-							{#each resultsData.loanUpdates as update}
+							{#each resultsData.loanUpdates as update (update.id)}
 								<div class="badge preset-filled-surface-200-800 rounded-full flex items-center gap-2">
 									<span>
 										Extra Payment: {formatCurrencyWithSymbol(update.principalPayment)} | 
@@ -432,6 +454,8 @@
 			</div>
 		{/if}
 	</div>
+</div>
+
 </div>
 
 <!-- Loan Update Modal -->

@@ -2,11 +2,9 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	let { error } = $props();
-
-	// Extract error message
-	const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-	const status = $derived(page.status);
+	// Extract error message from page store
+	const errorMessage = $derived($page.error instanceof Error ? $page.error.message : 'An unexpected error occurred');
+	const statusCode = $derived($page.status);
 </script>
 
 <div class="min-h-screen py-8 px-4 flex items-center justify-center">
@@ -23,9 +21,9 @@
 				<p class="text-sm text-error-500 font-mono break-words">
 					{errorMessage}
 				</p>
-				{#if status}
+				{#if statusCode}
 					<p class="text-xs text-surface-500 mt-2">
-						Status: {status}
+						Status: {statusCode}
 					</p>
 				{/if}
 			</div>
@@ -38,7 +36,7 @@
 					Return to Home
 				</button>
 				<button
-					onclick={() => window.location.reload()}
+					onclick={() => globalThis.window.location.reload()}
 					class="btn preset-filled-neutral w-full"
 				>
 					Reload Page
